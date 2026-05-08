@@ -8,7 +8,7 @@
 
 ## What this is
 
-A 9-agent deep-research system for the HCI topic "Agentic UX & AI-driven Prototyping". It implements a 4-stage workflow (planning → parallel evidence gathering → bull/bear debate → writing/editing) modeled on [TauricResearch/TradingAgents](https://github.com/TauricResearch/TradingAgents). Three researchers run concurrently in Stage 2; Stage 3 runs an Optimist vs. Skeptic debate adjudicated by a Research Manager. The output guardrail includes a provenance verifier that cross-checks every `[S\d+]` citation against a registered source registry before the report is delivered. A dual-judge evaluation pipeline (StrictRubric + HCI Grad Student persona) computes Spearman inter-judge correlation to triangulate output quality.
+A 9-agent deep-research system for the HCI topic "Agentic UX & AI-driven Prototyping". It implements a 4-stage workflow (planning → parallel evidence gathering → bull/bear debate → writing/editing). Three researchers run concurrently in Stage 2; Stage 3 runs an Optimist vs. Skeptic debate adjudicated by a Research Manager. The output guardrail includes a provenance verifier that cross-checks every `[S\d+]` citation against a registered source registry before the report is delivered. A dual-judge evaluation pipeline (StrictRubric + HCI Grad Student persona) computes Spearman inter-judge correlation to triangulate output quality.
 
 ---
 
@@ -19,6 +19,8 @@ python main.py --mode cli --replay Q1 --no-live  # or Q5, Q6
 ```
 
 This works without any API keys, internet, or config — replays cached real session data. Use this first to verify the system runs.
+
+But for full run TAVILY_API_KEY is stored locally in macos, so it will fallback to websearch
 
 ## Full install (for live runs)
 
