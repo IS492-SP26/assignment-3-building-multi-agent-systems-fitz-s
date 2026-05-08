@@ -46,7 +46,7 @@ streamlit run src/ui/streamlit_app.py
 python main.py --mode demo
 ```
 
-The demo mode runs Q1 ("What are the key open challenges in agentic UX as of 2025?") end-to-end and exports `outputs/demo_session_{ts}.json` and `outputs/demo_answer_{ts}.md`.
+The demo mode runs Q1 ("Synthesize 2024-2026 empirical evidence on continuous human-in-the-loop oversight in deployed multi-agent systems...") end-to-end and exports `outputs/demo_session_{ts}.json` and `outputs/demo_answer_{ts}.md`.
 
 ---
 
