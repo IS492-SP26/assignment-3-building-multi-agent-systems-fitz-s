@@ -1,244 +1,214 @@
 """
 Web Search Tool
-Integrates with web search APIs (Tavily, Brave, etc.)
+Cascading web search: Tavily -> DuckDuckGo HTML scrape.
 
-This tool provides web search functionality for the research agents.
-It supports both Tavily and Brave Search APIs.
+Created: 2026-05-07
+Last reused or audited: 2026-05-08 (Path C Fix 3: added BLOG_AGGREGATOR_DOMAINS
+blocklist. emergentmind.com / themoonlight.io etc. were 20% of evidence pool,
+producing 4th-hand synthesis (Qwen summarizes blog summary of paper summary).
+Filter applied to BOTH Tavily and DDG result paths; arxiv/openreview kept.)
+Authority basis: Plan §Tools, assignment-3 Phase 1 spec; Round-3 fix bundle (Fix 2);
+critic_report_v2 finding 3.3.
+
+Provides web_search() (AutoGen tool) and web_search_structured() (citation pipeline).
+Never logs API key values.
 """
 
 from typing import List, Dict, Any, Optional
+from urllib.parse import urlparse
 import os
 import logging
-import asyncio
+
+from src.utils.secrets import inject_into_env
+
+# Inject Tavily key from Keychain on import
+inject_into_env("skill_tavily_api_key", "TAVILY_API_KEY")
+
+logger = logging.getLogger("tools.web_search")
 
 
-class WebSearchTool:
+# Critic-v2 fix: blog/SEO aggregators that summarize papers (4th-hand synthesis).
+# These pollute the evidence pool with low-quality re-summaries of primary work.
+# Note: arxiv.org / acm.org / openreview.net / semanticscholar.org are KEPT.
+BLOG_AGGREGATOR_DOMAINS = {
+    "emergentmind.com", "themoonlight.io", "deepai.org",
+    "promptengineering.org", "marktechpost.com", "synthesis.ai",
+    "aimagazine.com", "venturebeat.com",  # business news, not research
+}
+
+
+def _filter_blog_aggregators(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Drop results whose hostname is in BLOG_AGGREGATOR_DOMAINS.
+
+    Path C Fix 3 (2026-05-08): protects evidence pool from low-tier
+    re-summarizers. Logs blocked count so we can see if filter is too aggressive.
     """
-    Tool for searching the web for information.
-    
-    Supports:
-    - Tavily API (has free tier)
-    - Brave Search API
-    
-    The tool formats results in a consistent structure regardless of provider.
+    out: List[Dict[str, Any]] = []
+    blocked = 0
+    for r in results:
+        url = r.get("url") or ""
+        try:
+            host = urlparse(url).hostname or ""
+            host = host.lower()
+            if host.startswith("www."):
+                host = host[4:]
+        except Exception:
+            host = ""
+        if host in BLOG_AGGREGATOR_DOMAINS:
+            blocked += 1
+            continue
+        out.append(r)
+    if blocked > 0:
+        logger.info("web_search: filtered %d blog aggregator results", blocked)
+    return out
+
+
+def web_search_structured(query: str, max_results: int = 5) -> List[Dict[str, Any]]:
     """
+    Search the web with cascading fallbacks and return structured results.
 
-    def __init__(self, provider: str = "tavily", max_results: int = 5):
-        """
-        Initialize web search tool.
+    Order:
+      1. Tavily (if TAVILY_API_KEY present and quota intact).
+      2. DuckDuckGo HTML scrape (no auth, no quota).
 
-        Args:
-            provider: Search provider ("tavily" or "brave")
-            max_results: Maximum number of results to return
-        """
-        self.provider = provider
-        self.max_results = max_results
-        self.logger = logging.getLogger("tools.web_search")
+    Tavily rejects queries >400 chars; arXiv times out on long queries. Truncate
+    to 380 chars at the search-tool boundary so callers can pass long
+    sub-question prose without hitting backend limits.
+    """
+    if query and len(query) > 380:
+        query = query[:380]
+    return _web_search_structured_impl(query, max_results)
 
-        # Get API key from environment
-        if provider == "tavily":
-            self.api_key = os.getenv("TAVILY_API_KEY")
-        elif provider == "brave":
-            self.api_key = os.getenv("BRAVE_API_KEY")
-        else:
-            raise ValueError(f"Unknown provider: {provider}")
 
-        if not self.api_key:
-            self.logger.warning(f"No API key found for {provider}. Search will return empty results.")
+def _web_search_structured_impl(query: str, max_results: int = 5) -> List[Dict[str, Any]]:
+    """Original implementation — separated so the public function can pre-truncate.
 
-    async def search(self, query: str, **kwargs) -> List[Dict[str, Any]]:
-        """
-        Search the web for information.
+    Returns:
+        List of dicts with keys: title, url, snippet, published_date, source_provider.
 
-        Args:
-            query: Search query
-            **kwargs: Additional search parameters
-                - search_depth: "basic" or "advanced" (Tavily only)
-                - include_domains: List of domains to focus on
-                - exclude_domains: List of domains to exclude
+    Path C Fix 3 (2026-05-08): every provider's results now pass through
+    _filter_blog_aggregators before return. Critical that ALL provider paths
+    apply the filter — bypass would re-introduce 4th-hand summaries.
+    """
+    # Try Tavily first
+    if os.getenv("TAVILY_API_KEY"):
+        results = _tavily_search(query, max_results)
+        results = _filter_blog_aggregators(results)
+        if results:
+            return results
+        logger.info("Tavily returned 0 usable results — falling back to DuckDuckGo")
 
-        Returns:
-            List of search results with title, url, snippet, etc.
-            Each result has format:
-            {
-                "title": str,
-                "url": str, 
-                "snippet": str,
-                "score": float (0-1),
-                "published_date": Optional[str],
-            }
-        """
-        self.logger.info(f"Searching web with {self.provider}: {query}")
+    # Fallback: DDG HTML scrape (POST form)
+    ddg_results = _ddg_html_search(query, max_results)
+    return _filter_blog_aggregators(ddg_results)
 
-        if not self.api_key:
-            self.logger.warning("No API key available, returning empty results")
-            return []
 
-        try:
-            if self.provider == "tavily":
-                return await self._search_tavily(query, **kwargs)
-            elif self.provider == "brave":
-                return await self._search_brave(query, **kwargs)
-        except Exception as e:
-            self.logger.error(f"Error during web search: {e}")
-            return []
+def web_search(query: str, max_results: int = 5) -> str:
+    """Synchronous web search for AutoGen tool integration."""
+    results = web_search_structured(query, max_results)
 
-    async def _search_tavily(self, query: str, **kwargs) -> List[Dict[str, Any]]:
-        """
-        Search using Tavily API.
-        """
-        try:
-            from tavily import TavilyClient
-            
-            client = TavilyClient(api_key=self.api_key)
-            
-            # Tavily search parameters
-            search_depth = kwargs.get("search_depth", "basic")
-            include_domains = kwargs.get("include_domains", [])
-            exclude_domains = kwargs.get("exclude_domains", [])
-            
-            # Perform search
-            response = client.search(
-                query=query,
-                max_results=self.max_results,
-                search_depth=search_depth,
-                include_domains=include_domains,
-                exclude_domains=exclude_domains,
-            )
-            
-            return self._parse_tavily_results(response)
-            
-        except ImportError:
-            self.logger.error("tavily-python not installed. Run: pip install tavily-python")
-            return []
-        except Exception as e:
-            self.logger.error(f"Tavily search error: {e}")
-            return []
+    if not results:
+        return f"No web search results found for '{query}'."
 
-    async def _search_brave(self, query: str, **kwargs) -> List[Dict[str, Any]]:
-        """
-        Search using Brave Search API.
-        
-        Brave Search is a privacy-focused alternative to Google.
-        """
-        try:
-            import aiohttp
-            
-            url = "https://api.search.brave.com/res/v1/web/search"
-            headers = {
-                "Accept": "application/json",
-                "Accept-Encoding": "gzip",
-                "X-Subscription-Token": self.api_key,
-            }
-            params = {
-                "q": query,
-                "count": self.max_results,
-            }
-            
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url, headers=headers, params=params) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        return self._parse_brave_results(data)
-                    else:
-                        self.logger.error(f"Brave API error: {response.status}")
-                        return []
-                        
-        except ImportError:
-            self.logger.error("aiohttp not installed. Run: pip install aiohttp")
-            return []
-        except Exception as e:
-            self.logger.error(f"Brave search error: {e}")
-            return []
+    provider = results[0].get("source_provider", "unknown") if results else "unknown"
+    lines = [f'### Web search results for "{query}" (provider: {provider}, n={len(results)})']
 
-    def _parse_tavily_results(self, response: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """
-        Parse Tavily API response into standard format.
-        
-        Tavily returns:
-        - results: list of search results
-        - answer: AI-generated answer (optional)
-        """
+    for i, r in enumerate(results, 1):
+        lines.append(f"\n{i}. **{r.get('title', 'No title')}**")
+        lines.append(f"   URL: {r.get('url', '')}")
+        lines.append(f"   Snippet: {r.get('snippet', '')}")
+        if r.get("published_date"):
+            lines.append(f"   Published: {r['published_date']}")
+
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Providers
+# ---------------------------------------------------------------------------
+
+def _tavily_search(query: str, max_results: int) -> List[Dict[str, Any]]:
+    try:
+        from tavily import TavilyClient
+        client = TavilyClient(api_key=os.environ["TAVILY_API_KEY"])
+        response = client.search(query, max_results=max_results, search_depth="advanced")
         results = []
-        
         for item in response.get("results", []):
             results.append({
                 "title": item.get("title", ""),
                 "url": item.get("url", ""),
                 "snippet": item.get("content", ""),
-                "score": item.get("score", 0.0),
                 "published_date": item.get("published_date"),
+                "source_provider": "tavily",
             })
-        
         return results
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Tavily search failed, will fall back to DuckDuckGo: %s", exc)
+        return []
 
-    def _parse_brave_results(self, response: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """
-        Parse Brave API response into standard format.
-        
-        Brave returns web results in different format than Tavily.
-        """
-        results = []
-        
-        web_results = response.get("web", {}).get("results", [])
-        
-        for item in web_results:
+
+class WebSearchTool:
+    """Compatibility shim for imports expecting the old class-based API."""
+    def __init__(self, provider: str = "tavily", max_results: int = 5):
+        self.provider = provider
+        self.max_results = max_results
+
+    def search_sync(self, query: str) -> List[Dict[str, Any]]:
+        return web_search_structured(query, self.max_results)
+
+
+def _ddg_html_search(query: str, n: int = 5) -> List[Dict[str, Any]]:
+    """Scrape DuckDuckGo's no-JS HTML results page via POST form.
+
+    Returns list of {title, url, snippet, published_date, source_provider}.
+    Returns [] on any failure (caller treats empty as authoritative no-results).
+    """
+    try:
+        import requests
+        from bs4 import BeautifulSoup
+        from urllib.parse import urlparse, parse_qs, unquote
+    except ImportError:
+        logger.error("DuckDuckGo fallback unavailable: requests/bs4 not installed")
+        return []
+
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+        ),
+    }
+    try:
+        r = requests.post(
+            "https://html.duckduckgo.com/html/",
+            data={"q": query},
+            headers=headers,
+            timeout=12,
+        )
+        r.raise_for_status()
+        soup = BeautifulSoup(r.text, "html.parser")
+        results: List[Dict[str, Any]] = []
+        for div in soup.select(".result")[:n]:
+            a = div.select_one(".result__a")
+            snippet = div.select_one(".result__snippet")
+            if not a or not a.get("href"):
+                continue
+            url = a.get("href")
+            # DDG uses redirect URLs — extract the real one from the uddg query param
+            if "duckduckgo.com/l/" in url or url.startswith("//duckduckgo.com/l/") or url.startswith("/l/"):
+                qs = parse_qs(urlparse(url).query)
+                url = unquote(qs.get("uddg", [url])[0])
             results.append({
-                "title": item.get("title", ""),
-                "url": item.get("url", ""),
-                "snippet": item.get("description", ""),
-                "score": 1.0,  # Brave doesn't provide scores
-                "published_date": item.get("age"),  # Relative date like "2 days ago"
+                "title": a.get_text(" ", strip=True),
+                "url": url,
+                "snippet": snippet.get_text(" ", strip=True) if snippet else "",
+                "published_date": "",
+                "source_provider": "duckduckgo",
             })
-        
         return results
-
-    def _filter_results(
-        self,
-        results: List[Dict[str, Any]],
-        min_score: float = 0.0
-    ) -> List[Dict[str, Any]]:
-        """
-        Filter results based on relevance score.
-        
-        Args:
-            results: List of search results
-            min_score: Minimum score threshold (0-1)
-            
-        Returns:
-            Filtered list of results
-        """
-        return [r for r in results if r.get("score", 0) >= min_score]
+    except Exception as exc:  # noqa: BLE001
+        logger.error("DuckDuckGo HTML search failed: %s", exc)
+        return []
 
 
-# Synchronous wrapper for use with AutoGen tools
-def web_search(query: str, provider: str = "tavily", max_results: int = 5) -> str:
-    """
-    Synchronous wrapper for web search (for AutoGen tool integration).
-    
-    Args:
-        query: Search query
-        provider: "tavily" or "brave"
-        max_results: Maximum results to return
-        
-    Returns:
-        Formatted string with search results
-    """
-    tool = WebSearchTool(provider=provider, max_results=max_results)
-    results = asyncio.run(tool.search(query))
-    
-    if not results:
-        return "No search results found."
-    
-    # Format results as readable text
-    output = f"Found {len(results)} web search results for '{query}':\n\n"
-    
-    for i, result in enumerate(results, 1):
-        output += f"{i}. {result['title']}\n"
-        output += f"   URL: {result['url']}\n"
-        output += f"   {result['snippet']}\n"
-        if result.get('published_date'):
-            output += f"   Published: {result['published_date']}\n"
-        output += "\n"
-    
-    return output
+# Keep _ddg_search as a backward-compat alias for any caller that still uses it.
+_ddg_search = _ddg_html_search

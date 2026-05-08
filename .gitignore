@@ -212,6 +212,20 @@ logs/
 data/*.json
 data/*.csv
 !data/example_queries.json
-outputs/
 *.pkl
 *.pickle
+
+# macOS metadata
+.DS_Store
+src/.DS_Store
+
+# IDE / agent state
+.claude/
+
+# Runtime-only outputs (do NOT commit)
+outputs/sessions/_live_running.json
+src/ui/static/live_partial.json
+outputs/screenshots/e2e_log.txt
+
+# Allow specific output files needed for demo/grading
+# (outputs/ is NOT globally ignored; only the above runtime files are excluded)

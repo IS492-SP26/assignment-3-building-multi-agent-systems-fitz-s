@@ -1,502 +1,453 @@
+# Created: 2026-05-07
+# Last reused or audited: 2026-05-07
+# Authority basis: Phase 8 spec — batch evaluation, multi-judge triangulation, Spearman correlation
 """
-System Evaluator
-Runs batch evaluations and generates reports.
+SystemEvaluator — batch evaluation with multi-judge triangulation.
 
-Example usage:
-    # Load config
-    with open("config.yaml") as f:
-        config = yaml.safe_load(f)
-    
-    # Initialize evaluator with orchestrator
-    evaluator = SystemEvaluator(config, orchestrator=my_orchestrator)
-    
-    # Run evaluation
-    report = await evaluator.evaluate_system("data/test_queries.json")
-    
-    # Results are automatically saved to outputs/
+Usage:
+    evaluator = SystemEvaluator(orchestrator, [StrictRubricJudge(client), PersonaJudge(client)], config)
+    run_data = evaluator.run_batch(queries)          # sync wrapper
+    evaluator.generate_report(run_data)              # writes JSON + MD to outputs/
 """
 
-from typing import Dict, Any, List, Optional
+from __future__ import annotations
+
+import asyncio
+import csv
 import json
 import logging
-from pathlib import Path
+import math
+import statistics
 from datetime import datetime
-import asyncio
-import inspect
+from pathlib import Path
+from typing import Any
 
-from .judge import LLMJudge
+from .judge import Judge
+
+logger = logging.getLogger("evaluation.evaluator")
 
 
 class SystemEvaluator:
-    """
-    Evaluates the multi-agent system using test queries and LLM-as-a-Judge.
-
-    TODO: YOUR CODE HERE
-    - Load test queries from file
-    - Run system on all test queries
-    - Collect and aggregate results
-    - Generate evaluation report
-    - Perform error analysis
-    """
-
-    def __init__(self, config: Dict[str, Any], orchestrator=None):
-        """
-        Initialize evaluator.
-
-        Args:
-            config: Configuration dictionary (from config.yaml)
-            orchestrator: The orchestrator to evaluate
-        """
-        self.config = config
+    def __init__(self, orchestrator: Any, judges: list[Judge], config: dict):
         self.orchestrator = orchestrator
-        self.logger = logging.getLogger("evaluation.evaluator")
+        self.judges = judges
+        self.config = config
 
-        # Load evaluation configuration from config.yaml
-        eval_config = config.get("evaluation", {})
-        self.enabled = eval_config.get("enabled", True)
-        self.max_test_queries = eval_config.get("num_test_queries", None)
-        
-        # Initialize judge (passes config to load judge model settings and criteria)
-        self.judge = LLMJudge(config)
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
 
-        # Evaluation results
-        self.results: List[Dict[str, Any]] = []
-        
-        self.logger.info(f"SystemEvaluator initialized (enabled={self.enabled})")
-
-    async def evaluate_system(
-        self,
-        test_queries_path: str = "data/test_queries.json"
-    ) -> Dict[str, Any]:
+    async def run_batch_async(self, queries: list[dict]) -> dict:
         """
-        Run full system evaluation.
-
-        Args:
-            test_queries_path: Path to test queries JSON file
-
-        Returns:
-            Evaluation results and statistics
-
-        TODO: YOUR CODE HERE
-        - Load test queries
-        - Run system on each query
-        - Evaluate each response
-        - Aggregate results
-        - Generate report
+        For each query: run orchestrator, then run each judge sequentially.
+        Returns full run_data dict including aggregate.
         """
-        # Check if evaluation is enabled in config.yaml
-        if not self.enabled:
-            self.logger.warning("Evaluation is disabled in config.yaml")
-            return {"error": "Evaluation is disabled in configuration"}
-        
-        self.logger.info("Starting system evaluation")
-        # Load test queries
-        test_queries = self._load_test_queries(test_queries_path)
-        self.logger.info(f"Loaded {len(test_queries)} test queries")
+        results = []
+        start_ts = datetime.now()
 
-        # Evaluate each query
-        for i, test_case in enumerate(test_queries, 1):
-            self.logger.info(f"Evaluating query {i}/{len(test_queries)}")
+        for i, q in enumerate(queries, 1):
+            qid = q.get("id", i)
+            query_text = q.get("query", "")
+            logger.info("Query %d/%d [id=%s]: %s", i, len(queries), qid, query_text[:60])
 
+            # --- run orchestrator ---
+            orch_result = {}
             try:
-                result = await self._evaluate_query(test_case)
-                self.results.append(result)
-            except Exception as e:
-                self.logger.error(f"Error evaluating query {i}: {e}")
-                self.results.append({
-                    "query": test_case.get("query", ""),
-                    "error": str(e)
-                })
-
-        # Aggregate results
-        report = self._generate_report()
-
-        # Save results
-        self._save_results(report)
-
-        return report
-
-    async def _evaluate_query(self, test_case: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Evaluate a single test query.
-
-        Args:
-            test_case: Test case with query and optional ground truth
-
-        Returns:
-            Evaluation result for this query
-
-        This shows how to integrate with the orchestrator.
-        """
-        query = test_case.get("query", "")
-        ground_truth = test_case.get("ground_truth")
-        expected_sources = test_case.get("expected_sources", [])
-
-        # Run through orchestrator if available
-        if self.orchestrator:
-            try:
-                # Call orchestrator's process_query method
-                # TODO: YOUR CODE HERE
-                # Need to implement this in their orchestrator
-                response_data = self.orchestrator.process_query(query)
-                
-                # If process_query is async, use:
-                # response_data = await self.orchestrator.process_query(query)
-                
-            except Exception as e:
-                self.logger.error(f"Error processing query through orchestrator: {e}")
-                response_data = {
-                    "query": query,
-                    "response": f"Error: {str(e)}",
-                    "citations": [],
-                    "metadata": {"error": str(e)}
+                orch_result = await asyncio.get_event_loop().run_in_executor(
+                    None, self.orchestrator.process_query, query_text
+                )
+            except Exception as exc:
+                logger.error("Orchestrator failed for query %s: %s", qid, exc)
+                orch_result = {
+                    "response": f"[Orchestrator error: {exc}]",
+                    "sources": {},
+                    "safety_events": [],
+                    "metadata": {"status": "error"},
                 }
-        else:
-            # Placeholder for testing without orchestrator
-            self.logger.warning("No orchestrator provided, using placeholder response")
-            response_data = {
-                "query": query,
-                "response": "Placeholder response - orchestrator not connected",
-                "citations": [],
-                "metadata": {"num_sources": 0}
-            }
 
-        # Evaluate response using LLM-as-a-Judge
-        evaluation = await self.judge.evaluate(
-            query=query,
-            response=response_data.get("response", ""),
-            sources=response_data.get("metadata", {}).get("sources", []),
-            ground_truth=ground_truth
-        )
+            response_text = orch_result.get("response", "")
+            sources_raw = orch_result.get("sources", {})
+            # sources may be dict {S1: {...}, ...} or list
+            if isinstance(sources_raw, dict):
+                sources_list = list(sources_raw.values())
+            else:
+                sources_list = sources_raw or []
+            safety_events = orch_result.get("safety_events", [])
+
+            # --- run each judge sequentially ---
+            judge_scores: dict[str, dict] = {}
+            for judge in self.judges:
+                try:
+                    score = await judge.score_async(
+                        query_text, response_text, sources_list, safety_events
+                    )
+                    judge_scores[judge.name] = score
+                    logger.info("  Judge %s scores: %s", judge.name, score.get("scores"))
+                except Exception as exc:
+                    logger.error("Judge %s failed on query %s: %s", judge.name, qid, exc)
+                    judge_scores[judge.name] = {
+                        "name": judge.name,
+                        "scores": {c: 0 for c in judge.criteria},
+                        "rationale": f"Judge error: {exc}",
+                        "raw": "",
+                    }
+
+            results.append({
+                "query": q,
+                "result": orch_result,
+                "judge_scores": judge_scores,
+            })
+
+        elapsed = (datetime.now() - start_ts).total_seconds()
+        run_data = {
+            "queries": results,
+            "meta": {
+                "n_queries": len(queries),
+                "n_judges": len(self.judges),
+                "elapsed_seconds": round(elapsed, 1),
+                "timestamp": start_ts.isoformat(),
+            },
+        }
+        run_data["aggregate"] = self.aggregate(run_data)
+        return run_data
+
+    def run_batch(self, queries: list[dict]) -> dict:
+        return asyncio.run(self.run_batch_async(queries))
+
+    def aggregate(self, run_data: dict) -> dict:
+        """
+        Compute:
+          - per_judge_per_criterion: {judge_name: {criterion: {mean, std, n}}}
+          - inter_judge_correlation: Spearman between judges (shared aggregate scores)
+          - judge_vs_human: Spearman vs human_eval.csv if present
+          - per_query_summary: list[{query_id, query_text, score_strict, score_persona, status}]
+        """
+        queries = run_data.get("queries", [])
+
+        # Collect per-judge per-criterion raw scores across queries
+        judge_criterion_vals: dict[str, dict[str, list[float]]] = {}
+        for entry in queries:
+            for jname, jscore in entry.get("judge_scores", {}).items():
+                if jname not in judge_criterion_vals:
+                    judge_criterion_vals[jname] = {}
+                for crit, val in jscore.get("scores", {}).items():
+                    judge_criterion_vals[jname].setdefault(crit, []).append(float(val))
+
+        per_judge_per_criterion: dict[str, dict[str, dict]] = {}
+        for jname, crit_vals in judge_criterion_vals.items():
+            per_judge_per_criterion[jname] = {}
+            for crit, vals in crit_vals.items():
+                n = len(vals)
+                mean = statistics.mean(vals) if vals else 0.0
+                std = statistics.stdev(vals) if len(vals) > 1 else 0.0
+                per_judge_per_criterion[jname][crit] = {
+                    "mean": round(mean, 3),
+                    "std": round(std, 3),
+                    "n": n,
+                }
+
+        # Inter-judge Spearman on aggregate mean score per query
+        inter_judge_correlation: dict[str, Any] = {}
+        judge_names = list(judge_criterion_vals.keys())
+        if len(judge_names) >= 2:
+            # Build per-query aggregate score vectors for each judge
+            judge_agg: dict[str, list[float]] = {jn: [] for jn in judge_names}
+            for entry in queries:
+                for jn in judge_names:
+                    scores = entry.get("judge_scores", {}).get(jn, {}).get("scores", {})
+                    vals = [float(v) for v in scores.values() if v != 0]
+                    judge_agg[jn].append(statistics.mean(vals) if vals else 0.0)
+
+            for i in range(len(judge_names)):
+                for j in range(i + 1, len(judge_names)):
+                    jn_a, jn_b = judge_names[i], judge_names[j]
+                    key = f"{jn_a}_vs_{jn_b}"
+                    corr, pval = _spearman(judge_agg[jn_a], judge_agg[jn_b])
+                    inter_judge_correlation[key] = {
+                        "spearman_r": round(corr, 4) if corr is not None else None,
+                        "p_value": round(pval, 4) if pval is not None else None,
+                        "n": len(queries),
+                    }
+
+        # Human triangulation — load human_eval.csv if present
+        judge_vs_human: dict[str, Any] = {}
+        human_path = Path("data/human_eval.csv")
+        if human_path.exists():
+            judge_vs_human = _compute_human_correlation(queries, judge_names, human_path)
+
+        # Per-query summary
+        per_query_summary = []
+        for entry in queries:
+            q = entry.get("query", {})
+            qid = q.get("id", "?")
+            qtext = q.get("query", "")[:80]
+            meta = entry.get("result", {}).get("metadata", {})
+            status = meta.get("status", "unknown")
+
+            score_strict = _judge_mean(entry, "strict_rubric")
+            score_persona = _judge_mean(entry, "hci_grad_student")
+
+            per_query_summary.append({
+                "query_id": qid,
+                "query_text": qtext,
+                "score_strict": round(score_strict, 3),
+                "score_persona": round(score_persona, 3),
+                "status": status,
+            })
 
         return {
-            "query": query,
-            "response": response_data.get("response", ""),
-            "evaluation": evaluation,
-            "metadata": response_data.get("metadata", {}),
-            "ground_truth": ground_truth
+            "per_judge_per_criterion": per_judge_per_criterion,
+            "inter_judge_correlation": inter_judge_correlation,
+            "judge_vs_human": judge_vs_human,
+            "per_query_summary": per_query_summary,
         }
 
-    def _load_test_queries(self, path: str) -> List[Dict[str, Any]]:
+    def generate_report(self, run_data: dict, output_dir: str = "outputs") -> tuple[Path, Path]:
         """
-        Load test queries from JSON file.
-
-        TODO: YOUR CODE HERE
-        - Create test query dataset
-        - Load and validate queries
+        Writes:
+          outputs/eval_report_{ts}.json — full data + aggregate
+          outputs/eval_report_{ts}.md  — human-readable tables + interpretation
+        Returns (json_path, md_path).
         """
-        path_obj = Path(path)
-        if not path_obj.exists():
-            self.logger.warning(f"Test queries file not found: {path}")
-            return []
+        out = Path(output_dir)
+        out.mkdir(parents=True, exist_ok=True)
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-        with open(path_obj, 'r') as f:
-            queries = json.load(f)
+        json_path = out / f"eval_report_{ts}.json"
+        md_path = out / f"eval_report_{ts}.md"
 
-        # Limit number of queries if configured in config.yaml
-        if self.max_test_queries and len(queries) > self.max_test_queries:
-            self.logger.info(f"Limiting to {self.max_test_queries} queries (from config.yaml)")
-            queries = queries[:self.max_test_queries]
+        # Write JSON (strip raw LLM outputs to keep size sane)
+        slim = _slim_for_json(run_data)
+        with open(json_path, "w") as f:
+            json.dump(slim, f, indent=2, default=str)
+        logger.info("Wrote %s", json_path)
 
-        return queries
+        # Write Markdown
+        md = _render_markdown(run_data)
+        with open(md_path, "w") as f:
+            f.write(md)
+        logger.info("Wrote %s", md_path)
 
-    def _generate_report(self) -> Dict[str, Any]:
-        """
-        Generate evaluation report with statistics and analysis.
-
-        TODO: YOUR CODE HERE
-        - Calculate aggregate statistics
-        - Identify best/worst performing queries
-        - Analyze errors
-        - Generate visualizations (optional)
-        """
-        if not self.results:
-            return {"error": "No results to report"}
-
-        # Calculate statistics
-        total_queries = len(self.results)
-        successful = [r for r in self.results if "error" not in r]
-        failed = [r for r in self.results if "error" in r]
-
-        # Aggregate scores
-        criterion_scores = {}
-        overall_scores = []
-
-        for result in successful:
-            evaluation = result.get("evaluation", {})
-            overall_scores.append(evaluation.get("overall_score", 0.0))
-
-            # Collect scores by criterion
-            for criterion, score_data in evaluation.get("criterion_scores", {}).items():
-                if criterion not in criterion_scores:
-                    criterion_scores[criterion] = []
-                criterion_scores[criterion].append(score_data.get("score", 0.0))
-
-        # Calculate averages
-        avg_overall = sum(overall_scores) / len(overall_scores) if overall_scores else 0.0
-
-        avg_criterion_scores = {}
-        for criterion, scores in criterion_scores.items():
-            avg_criterion_scores[criterion] = sum(scores) / len(scores) if scores else 0.0
-
-        # Find best and worst
-        best_result = max(successful, key=lambda r: r.get("evaluation", {}).get("overall_score", 0.0)) if successful else None
-        worst_result = min(successful, key=lambda r: r.get("evaluation", {}).get("overall_score", 0.0)) if successful else None
-
-        report = {
-            "timestamp": datetime.now().isoformat(),
-            "summary": {
-                "total_queries": total_queries,
-                "successful": len(successful),
-                "failed": len(failed),
-                "success_rate": len(successful) / total_queries if total_queries > 0 else 0.0
-            },
-            "scores": {
-                "overall_average": avg_overall,
-                "by_criterion": avg_criterion_scores
-            },
-            "best_result": {
-                "query": best_result.get("query", "") if best_result else "",
-                "score": best_result.get("evaluation", {}).get("overall_score", 0.0) if best_result else 0.0
-            } if best_result else None,
-            "worst_result": {
-                "query": worst_result.get("query", "") if worst_result else "",
-                "score": worst_result.get("evaluation", {}).get("overall_score", 0.0) if worst_result else 0.0
-            } if worst_result else None,
-            "detailed_results": self.results
-        }
-
-        return report
-
-    def _save_results(self, report: Dict[str, Any]):
-        """
-        Save evaluation results to file.
-
-        TODO: YOUR CODE HERE
-        - Save detailed results
-        - Generate visualizations
-        - Create summary report
-        """
-        output_dir = Path("outputs")
-        output_dir.mkdir(exist_ok=True)
-
-        # Save detailed results
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        results_file = output_dir / f"evaluation_{timestamp}.json"
-
-        with open(results_file, 'w') as f:
-            json.dump(report, f, indent=2)
-
-        self.logger.info(f"Evaluation results saved to {results_file}")
-
-        # Save summary
-        summary_file = output_dir / f"evaluation_summary_{timestamp}.txt"
-        with open(summary_file, 'w') as f:
-            f.write("EVALUATION SUMMARY\n")
-            f.write("=" * 70 + "\n\n")
-
-            summary = report.get("summary", {})
-            f.write(f"Total Queries: {summary.get('total_queries', 0)}\n")
-            f.write(f"Successful: {summary.get('successful', 0)}\n")
-            f.write(f"Failed: {summary.get('failed', 0)}\n")
-            f.write(f"Success Rate: {summary.get('success_rate', 0.0):.2%}\n\n")
-
-            scores = report.get("scores", {})
-            f.write(f"Overall Average Score: {scores.get('overall_average', 0.0):.3f}\n\n")
-
-            f.write("Scores by Criterion:\n")
-            for criterion, score in scores.get("by_criterion", {}).items():
-                f.write(f"  {criterion}: {score:.3f}\n")
-
-        self.logger.info(f"Summary saved to {summary_file}")
-
-    def export_for_report(self, output_path: str = "outputs/report_data.json"):
-        """
-        Export data formatted for inclusion in technical report.
-
-        """
-        if not self.results:
-            self.logger.warning("No results to export")
-            return
-        
-        # Create output directory
-        output_dir = Path(output_path).parent
-        output_dir.mkdir(exist_ok=True)
-        
-        # Format data for report
-        report_data = {
-            "evaluation_date": datetime.now().isoformat(),
-            "total_queries": len(self.results),
-            "results": self.results
-        }
-        
-        with open(output_path, 'w') as f:
-            json.dump(report_data, f, indent=2)
-        
-        self.logger.info(f"Report data exported to {output_path}")
+        return json_path, md_path
 
 
-async def example_simple_evaluation():
-    """
-    Example 1: Simple evaluation without orchestrator
-    Tests the evaluation pipeline with mock responses
-    
-    Usage:
-        import asyncio
-        from src.evaluation.evaluator import example_simple_evaluation
-        asyncio.run(example_simple_evaluation())
-    """
-    import yaml
-    from dotenv import load_dotenv
-    
-    load_dotenv()
-    
-    print("=" * 70)
-    print("EXAMPLE 1: Simple Evaluation (No Orchestrator)")
-    print("=" * 70)
-    
-    # Load config
-    with open("config.yaml", 'r') as f:
-        config = yaml.safe_load(f)
-    
-    # Create test queries in memory (no file needed)
-    test_queries = [
-        {
-            "query": "What is the capital of France?",
-            "ground_truth": "Paris is the capital of France."
-        },
-        {
-            "query": "What are the benefits of exercise?",
-            "ground_truth": "Exercise improves physical health, mental wellbeing, and reduces disease risk."
-        }
-    ]
-    
-    # Save test queries temporarily
-    test_file = Path("data/test_queries_example.json")
-    test_file.parent.mkdir(exist_ok=True)
-    with open(test_file, 'w') as f:
-        json.dump(test_queries, f, indent=2)
-    
-    # Initialize evaluator without orchestrator
-    evaluator = SystemEvaluator(config, orchestrator=None)
-    
-    print("\nRunning evaluation on test queries...")
-    print("Note: Using placeholder responses since no orchestrator is connected\n")
-    
-    # Run evaluation
-    report = await evaluator.evaluate_system(str(test_file))
-    
-    # Display results
-    print("\n" + "=" * 70)
-    print("EVALUATION RESULTS")
-    print("=" * 70)
-    print(f"\nTotal Queries: {report['summary']['total_queries']}")
-    print(f"Successful: {report['summary']['successful']}")
-    print(f"Failed: {report['summary']['failed']}")
-    print(f"Overall Average Score: {report['scores']['overall_average']:.3f}\n")
-    
-    print("Scores by Criterion:")
-    for criterion, score in report['scores']['by_criterion'].items():
-        print(f"  {criterion}: {score:.3f}")
-    
-    print(f"\nDetailed results saved to outputs/")
-    
-    # Clean up
-    test_file.unlink()
+# ------------------------------------------------------------------
+# Internal helpers
+# ------------------------------------------------------------------
+
+def _judge_mean(entry: dict, judge_name: str) -> float:
+    scores = entry.get("judge_scores", {}).get(judge_name, {}).get("scores", {})
+    vals = [float(v) for v in scores.values() if v != 0]
+    return statistics.mean(vals) if vals else 0.0
 
 
-async def example_with_orchestrator():
-    """
-    Example 2: Evaluation with orchestrator
-    Shows how to connect the evaluator to your multi-agent system
-    
-    Usage:
-        import asyncio
-        from src.evaluation.evaluator import example_with_orchestrator
-        asyncio.run(example_with_orchestrator())
-    """
-    import yaml
-    from dotenv import load_dotenv
-    
-    load_dotenv()
-    
-    print("=" * 70)
-    print("EXAMPLE 2: Evaluation with Orchestrator")
-    print("=" * 70)
-    
-    # Load config
-    with open("config.yaml", 'r') as f:
-        config = yaml.safe_load(f)
-    
-    # Initialize orchestrator
+def _spearman(x: list[float], y: list[float]) -> tuple[float | None, float | None]:
+    """Compute Spearman correlation using scipy if available, else return None."""
+    if len(x) < 2 or len(x) != len(y):
+        return None, None
     try:
-        from src.autogen_orchestrator import AutoGenOrchestrator
-        orchestrator = AutoGenOrchestrator(config)
-        print("\nOrchestrator initialized successfully")
-    except Exception as e:
-        print(f"\nCould not initialize orchestrator: {e}")
-        print("This example requires a working orchestrator implementation")
-        return
-    
-    # Create test queries
-    test_queries = [
-        {
-            "query": "What are the key principles of accessible user interface design?",
-            "ground_truth": "Key principles include perceivability, operability, understandability, and robustness."
+        from scipy.stats import spearmanr
+        result = spearmanr(x, y)
+        return float(result.statistic), float(result.pvalue)
+    except Exception as exc:
+        logger.warning("Spearman computation failed: %s", exc)
+        return None, None
+
+
+def _compute_human_correlation(
+    queries: list[dict], judge_names: list[str], human_path: Path
+) -> dict:
+    """
+    Load human_eval.csv, correlate human scores with judge aggregate scores.
+    Gracefully returns NaN fields if human data is sparse or missing.
+    """
+    # Load human scores keyed by (query_id, criterion)
+    human_by_qid: dict[int | str, list[float]] = {}
+    try:
+        with open(human_path, newline="") as f:
+            reader = csv.DictReader(
+                (line for line in f if not line.startswith("#"))
+            )
+            for row in reader:
+                qid_raw = (row.get("query_id") or "").strip()
+                score_raw = (row.get("human_score") or "").strip()
+                if not qid_raw or not score_raw:
+                    continue
+                try:
+                    qid = int(qid_raw)
+                    score = float(score_raw)
+                    human_by_qid.setdefault(qid, []).append(score)
+                except ValueError:
+                    continue
+    except Exception as exc:
+        logger.warning("Could not read human_eval.csv: %s", exc)
+        return {"error": str(exc)}
+
+    if not human_by_qid:
+        return {"note": "human_eval.csv present but no numeric scores found (stub data)"}
+
+    # Build paired vectors
+    human_agg_per_query: list[float] = []
+    judge_agg_per_query: dict[str, list[float]] = {jn: [] for jn in judge_names}
+
+    for entry in queries:
+        q = entry.get("query", {})
+        qid = q.get("id")
+        if qid not in human_by_qid:
+            continue
+        h_mean = statistics.mean(human_by_qid[qid])
+        human_agg_per_query.append(h_mean)
+        for jn in judge_names:
+            judge_agg_per_query[jn].append(_judge_mean(entry, jn))
+
+    results = {}
+    for jn in judge_names:
+        jvals = judge_agg_per_query[jn]
+        corr, pval = _spearman(human_agg_per_query, jvals)
+        results[jn] = {
+            "spearman_r": round(corr, 4) if corr is not None else None,
+            "p_value": round(pval, 4) if pval is not None else None,
+            "n_paired": len(human_agg_per_query),
         }
+    return results
+
+
+def _slim_for_json(run_data: dict) -> dict:
+    """Return run_data with raw LLM outputs removed to keep file size reasonable."""
+    import copy
+    slim = copy.deepcopy(run_data)
+    for entry in slim.get("queries", []):
+        for jscore in entry.get("judge_scores", {}).values():
+            jscore.pop("raw", None)
+    return slim
+
+
+def _render_markdown(run_data: dict) -> str:
+    agg = run_data.get("aggregate", {})
+    meta = run_data.get("meta", {})
+    queries = run_data.get("queries", [])
+
+    ts = meta.get("timestamp", datetime.now().isoformat())
+    n_q = meta.get("n_queries", len(queries))
+    elapsed = meta.get("elapsed_seconds", "?")
+
+    lines = [
+        "# Evaluation Report — Multi-Judge Triangulation",
+        "",
+        f"**Generated:** {ts}  ",
+        f"**Queries evaluated:** {n_q}  ",
+        f"**Elapsed:** {elapsed}s  ",
+        f"**Judges:** {', '.join(j.name for j in []) or _judge_names_from_data(queries)}",
+        "",
+        "---",
+        "",
+        "## Per-Judge Per-Criterion Scores",
+        "",
     ]
-    
-    test_file = Path("data/test_queries_orchestrator.json")
-    test_file.parent.mkdir(exist_ok=True)
-    with open(test_file, 'w') as f:
-        json.dump(test_queries, f, indent=2)
-    
-    # Initialize evaluator with orchestrator
-    evaluator = SystemEvaluator(config, orchestrator=orchestrator)
-    
-    print("\nRunning evaluation with real orchestrator...")
-    print("This will actually query your multi-agent system\n")
-    
-    # Run evaluation
-    report = await evaluator.evaluate_system(str(test_file))
-    
-    # Display results
-    print("\n" + "=" * 70)
-    print("EVALUATION RESULTS")
-    print("=" * 70)
-    print(f"\nTotal Queries: {report['summary']['total_queries']}")
-    print(f"Overall Average Score: {report['scores']['overall_average']:.3f}\n")
-    
-    print("Scores by Criterion:")
-    for criterion, score in report['scores']['by_criterion'].items():
-        print(f"  {criterion}: {score:.3f}")
-    
-    # Show detailed result for first query
-    if report['detailed_results']:
-        result = report['detailed_results'][0]
-        print("\n" + "=" * 70)
-        print("DETAILED RESULT (First Query)")
-        print("=" * 70)
-        print(f"\nQuery: {result['query']}")
-        print(f"\nResponse: {result['response'][:200]}...")
-        print(f"\nOverall Score: {result['evaluation']['overall_score']:.3f}")
-    
-    print(f"\nFull results saved to outputs/")
-    
-    # Clean up
-    test_file.unlink()
+
+    pjpc = agg.get("per_judge_per_criterion", {})
+    for jname, crits in pjpc.items():
+        lines.append(f"### Judge: `{jname}`")
+        lines.append("")
+        lines.append("| Criterion | Mean | Std | N |")
+        lines.append("|-----------|------|-----|---|")
+        for crit, stats in crits.items():
+            lines.append(
+                f"| {crit} | {stats['mean']:.2f} | {stats['std']:.2f} | {stats['n']} |"
+            )
+        lines.append("")
+
+    # Inter-judge correlation
+    lines += [
+        "## Inter-Judge Correlation (Spearman)",
+        "",
+        "| Pair | Spearman r | p-value | N |",
+        "|------|-----------|---------|---|",
+    ]
+    for pair, corr_data in agg.get("inter_judge_correlation", {}).items():
+        r = corr_data.get("spearman_r")
+        p = corr_data.get("p_value")
+        n = corr_data.get("n", "?")
+        r_str = f"{r:.4f}" if r is not None else "N/A"
+        p_str = f"{p:.4f}" if p is not None else "N/A"
+        lines.append(f"| {pair} | {r_str} | {p_str} | {n} |")
+    lines.append("")
+
+    # Human triangulation
+    jvh = agg.get("judge_vs_human", {})
+    if jvh and "error" not in jvh and "note" not in jvh:
+        lines += [
+            "## Judge vs Human Triangulation (Spearman)",
+            "",
+            "| Judge | Spearman r | p-value | N paired |",
+            "|-------|-----------|---------|----------|",
+        ]
+        for jn, corr_data in jvh.items():
+            r = corr_data.get("spearman_r")
+            p = corr_data.get("p_value")
+            n = corr_data.get("n_paired", "?")
+            r_str = f"{r:.4f}" if r is not None else "N/A"
+            p_str = f"{p:.4f}" if p is not None else "N/A"
+            lines.append(f"| {jn} | {r_str} | {p_str} | {n} |")
+        lines.append("")
+    elif "note" in jvh:
+        lines += [f"> **Human triangulation:** {jvh['note']}", ""]
+    elif "error" in jvh:
+        lines += [f"> **Human triangulation error:** {jvh['error']}", ""]
+
+    # Per-query summary
+    lines += [
+        "## Per-Query Summary",
+        "",
+        "| ID | Query | Score (strict) | Score (persona) | Status |",
+        "|----|-------|---------------|----------------|--------|",
+    ]
+    for row in agg.get("per_query_summary", []):
+        qid = row.get("query_id", "?")
+        qtext = row.get("query_text", "")[:60].replace("|", "/")
+        ss = row.get("score_strict", 0)
+        sp = row.get("score_persona", 0)
+        status = row.get("status", "?")
+        lines.append(f"| {qid} | {qtext} | {ss:.2f} | {sp:.2f} | {status} |")
+    lines.append("")
+
+    # Detailed per-query rationales
+    lines += ["## Detailed Rationales", ""]
+    for entry in queries:
+        q = entry.get("query", {})
+        qid = q.get("id", "?")
+        qtext = q.get("query", "")
+        lines += [f"### Query {qid}: {qtext[:80]}", ""]
+        for jname, jscore in entry.get("judge_scores", {}).items():
+            scores_str = ", ".join(
+                f"{k}={v}" for k, v in jscore.get("scores", {}).items()
+            )
+            rationale = jscore.get("rationale", "")
+            lines += [
+                f"**{jname}** — scores: {scores_str}",
+                f"> {rationale}",
+                "",
+            ]
+
+    # Interpretation notes
+    lines += [
+        "---",
+        "",
+        "## Interpretation Notes",
+        "",
+        "- Scores are on a 1–5 integer scale; 3 is the default for missing/unparseable criteria.",
+        "- `strict_rubric` emphasises academic rigour and source quality.",
+        "- `hci_grad_student` emphasises practical utility for literature review.",
+        "- High inter-judge Spearman r (>0.7) indicates strong agreement; low r suggests judges diverge in their evaluation lens.",
+        "- Human triangulation requires real scores in `data/human_eval.csv`; stub data is illustrative only.",
+        "",
+    ]
+
+    return "\n".join(lines)
 
 
-# For direct execution
-if __name__ == "__main__":
-    import asyncio
-    
-    print("Running SystemEvaluator Examples\n")
-    
-    # Run example 1
-    asyncio.run(example_simple_evaluation())
-    
-    print("\n\n")
-    
-    # Run example 2 (if orchestrator is available)
-    asyncio.run(example_with_orchestrator())
+def _judge_names_from_data(queries: list[dict]) -> str:
+    names: set[str] = set()
+    for entry in queries:
+        names.update(entry.get("judge_scores", {}).keys())
+    return ", ".join(sorted(names)) if names else "none"

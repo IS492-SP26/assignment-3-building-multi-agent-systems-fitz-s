@@ -1,0 +1,74 @@
+<!doctype html>
+<html><head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;height:0;overflow:hidden;">
+<script>
+// Streamlit component protocol (raw postMessage, no npm dependency).
+// This relay receives omc_navigate messages posted to the TOP-LEVEL window
+// by the island iframe (window.parent.postMessage from island → top window).
+// The relay registers its handler on window.parent so it can intercept those
+// messages, then calls setComponentValue() to relay the params to Python.
+
+function setComponentValue(value) {
+  window.parent.postMessage({
+    isStreamlitMessage: true,
+    type: "streamlit:setComponentValue",
+    apiVersion: 1,
+    value: value,
+    dataType: "json"
+  }, "*");
+}
+
+function setFrameHeight(h) {
+  window.parent.postMessage({
+    isStreamlitMessage: true,
+    type: "streamlit:setFrameHeight",
+    height: h
+  }, "*");
+}
+
+function setComponentReady() {
+  window.parent.postMessage({
+    isStreamlitMessage: true,
+    type: "streamlit:componentReady",
+    apiVersion: 1
+  }, "*");
+}
+
+setFrameHeight(0);
+
+// Register on window.parent (top Streamlit page) — same-origin so this works.
+// Handles two message types:
+//   omc_navigate: {params: {...}}  — generic param relay to Python
+//   omc_run:      {query: "..."}  — run query shorthand, translates to {run: query}
+// De-duplicate using lastSent to avoid re-triggering on Streamlit reruns.
+var lastSent = null;
+var p = window.parent;
+function attachListener() {
+  p.addEventListener('message', function(ev) {
+    if (!ev.data) return;
+    var params = null;
+    if (ev.data.type === 'omc_navigate') {
+      params = ev.data.params || {};
+    } else if (ev.data.type === 'omc_run') {
+      var q = (ev.data.query || '').trim();
+      if (!q) return;
+      params = { run: q };
+    }
+    if (!params) return;
+    var key = JSON.stringify(params);
+    if (key === lastSent) return;
+    lastSent = key;
+    setComponentValue(params);
+  });
+}
+
+// Always re-attach on load (Streamlit reruns remount this iframe).
+// Use a flag on this window (not parent) to avoid double-attach within one load.
+if (!window._omcRelayAttached) {
+  window._omcRelayAttached = true;
+  attachListener();
+}
+
+setComponentReady();
+</script>
+</body></html>

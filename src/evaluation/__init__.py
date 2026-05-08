@@ -3,10 +3,11 @@ Evaluation Module
 LLM-as-a-Judge implementation for evaluating system outputs.
 """
 
-from .judge import LLMJudge
+from .judge import StrictRubricJudge, PersonaJudge
 from .evaluator import SystemEvaluator
 
 __all__ = [
-    "LLMJudge",
+    "StrictRubricJudge",
+    "PersonaJudge",
     "SystemEvaluator",
 ]

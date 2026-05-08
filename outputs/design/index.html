@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Agentic UX — Deep Research</title>
+<meta name="viewport" content="width=1440, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+Pro:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="data.jsx"></script>
+<script type="text/babel" src="components.jsx"></script>
+<script type="text/babel" src="app.jsx"></script>
+
+<!-- COMPONENT_NOTES_BEGIN
+================================================================================
+ Streamlit wiring guide — Phase 5/6 implementation map
+================================================================================
+ Each component below maps either to:
+   (a) a stock Streamlit / streamlit-extras / streamlit-shadcn-ui widget, OR
+   (b) a self-contained HTML island via st.components.v1.html(...)
+ Required state lives under st.session_state. Suggested keys are listed.
+
+1. TopBar
+   Implementation: custom HTML island (st.components.v1.html, height=56)
+   Reasoning: Streamlit's native header is unstyled; mode chips need a tab
+     bar that matches the dense aesthetic. Cheap to render; static markup
+     plus 5 buttons that postMessage the chosen mode back to Python via
+     streamlit-js-eval or st_javascript.
+   Data: st.session_state['mode']: str ∈ {autogen, cli, web, eval, demo}
+
+2. Sidebar (left)
+   Implementation: native st.sidebar + custom HTML for history items
+   Reasoning: Search/new-query buttons can be st.text_input + st.button.
+     History list renders via st.markdown(unsafe_allow_html=True) using
+     the .history-item CSS classes; click handlers use streamlit-extras
+     `stylable_container` + `clickable_container`.
+   Data: st.session_state['history']: list[SessionMeta],
+         st.session_state['active_session_id']: str
+
+3. AgentMessageCard (msg-card)
+   Implementation: custom HTML island per card (st.components.v1.html)
+   Reasoning: agent-color avatars + chip layout + collapsible long bodies
+     are awkward in pure st.markdown. One island per card; height=auto
+     via scrolling=False and explicit pixel height computed from body
+     length, OR render the entire trace as ONE island (preferred).
+   Data: st.session_state['traces'][session_id]: list[Message]
+         Message = {agent, stage, time, duration, role, body, sanitized}
+
+4. DebateCard
+   Implementation: custom HTML island
+   Reasoning: 2-column opposing layout + verdict bar can't be expressed
+     in stock Streamlit columns without breaking spacing. Render whole
+     debate (Optimist + Skeptic + Manager) as one island, ~280px tall.
+   Data: st.session_state['debates'][session_id]: list[DebateRound]
+
+5. CitationChip [Sn]
+   Implementation: inline span inside the trace island; tooltip is pure CSS
+   Reasoning: Tooltip is hover-only and self-contained; no Python round-trip
+     needed. Source dictionary is embedded into the trace island at render
+     time so [S1] lookups are local.
+   Data: st.session_state['sources'][session_id]: dict[str, Source]
+
+6. ActiveAgentIndicator
+   Implementation: custom HTML island, height=46
+   Reasoning: Pulsing dot + agent color animation. Re-render on every
+     pipeline tick by calling st.rerun() from a background thread or using
+     streamlit-autorefresh at 1-2s while pipeline is running.
+   Data: st.session_state['active_agent']: {id, status} | None
+
+7. PipelineProgressStepper
+   Implementation: custom HTML island, height=70
+   Reasoning: 7 nodes with 3 states + connectors need precise SVG/flex
+     control. streamlit-extras `stepper_bar` is too narrow visually;
+     custom keeps the cyan/blue/green tokens.
+   Data: st.session_state['pipeline_state']: dict[stage, "done"|"active"|"pending"|"error"]
+
+8. SafetyPanel
+   Implementation: custom HTML island, scoped to right rail container
+   Reasoning: Color-coded chip + linked event log. Rendered inside a
+     `st.container(border=True)` whose contents are HTML islands.
+   Data: st.session_state['safety_events'][session_id]: list[SafetyEvent]
+
+9. SourcesPanel
+   Implementation: custom HTML island with vanilla-JS toggle on click
+   Reasoning: Per-source expand/collapse is fully local DOM state — no
+     Python round-trip needed. Source list is small (≤15) so rendering
+     all collapsed bodies up-front is fine.
+   Data: st.session_state['sources'][session_id]: dict[str, Source]
+
+10. ExportMenu
+    Implementation: streamlit-shadcn-ui `dropdown_menu` OR custom island
+                    + st.download_button (one per format) hidden behind it
+    Reasoning: True dropdown chrome doesn't exist in stock Streamlit;
+      shadcn-ui covers it. The actual file generation is Python:
+      `json.dumps(session)` / `markdown_export(session)` /
+      `html_export(session)` driven by st.download_button.
+    Data: st.session_state['session_id']  (used to fetch full session)
+
+11. EmptyState
+    Implementation: custom HTML island (~360px tall) + st.button per tip
+    Reasoning: Centered illustration + 3 suggestion cards. Suggestion
+      buttons fire a Python callback that sets st.session_state['query'].
+    Data: st.session_state['suggestions']: list[str]  (configurable)
+
+12. RefusedBanner
+    Implementation: custom HTML island, height=120
+    Reasoning: Color, icon, and pattern-display need precise red theming.
+      "Edit query" CTA is wired to a hidden st.form_submit_button that
+      pre-fills the search input on click.
+    Data: st.session_state['refusal']:
+            {category, title, body, pattern, match} | None
+
+13. SanitizedInlineMarker
+    Implementation: inline span inside trace island
+    Reasoning: Single CSS class .sanitized with a one-shot shake animation.
+      Triggered when a Writer message has .sanitized === true in its
+      Message dict; no separate widget.
+    Data: Message.sanitized: bool
+
+14. Stepper-derived live status (StatusBar)
+    Implementation: custom HTML island, height=24, full width footer
+    Reasoning: Bloomberg-style condensed status row. Refreshes alongside
+      ActiveAgentIndicator on every tick.
+    Data: st.session_state['session_meta']: SessionMeta
+
+================================================================================
+ Backend wiring contract (Phase 5)
+================================================================================
+ The Python orchestrator (src/autogen_orchestrator.py) emits events on a
+ queue. The Streamlit layer consumes them via streamlit-autorefresh and
+ mutates st.session_state. Suggested event shape:
+
+   Event = {
+     type: "message" | "stage_change" | "active_agent" | "safety_event"
+         | "source_added" | "stepper_tick" | "complete" | "refused",
+     session_id: str,
+     payload: dict,
+     ts: ISO-8601 string
+   }
+
+ The dashboard re-renders from session_state alone; the queue exists only
+ to push deltas in. This decouples the UI from agent execution and keeps
+ Streamlit's render model simple.
+
+================================================================================
+ CSS variables — promote to src/ui/styles.css verbatim
+================================================================================
+ All color/type/geometry tokens live at the top of styles.css under :root
+ and are duplicated under [data-theme="light"]. Streamlit can flip the
+ attribute via:
+   st.markdown(
+     "<script>document.documentElement.dataset.theme='light'</script>",
+     unsafe_allow_html=True
+   )
+ Or by mounting a small toggle island in the top bar.
+COMPONENT_NOTES_END -->
+</body>
+</html>

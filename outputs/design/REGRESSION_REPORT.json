@@ -1,0 +1,654 @@
+{
+  "viewport_metrics": {},
+  "design_dom": {
+    "default": {
+      "doc_size": [
+        1440,
+        900
+      ],
+      "topbar": {
+        "h": 56,
+        "w": 1440,
+        "bg": "rgb(10, 14, 20)"
+      },
+      "sidebar": {
+        "w": 240,
+        "h": 820,
+        "bg": "rgb(10, 14, 20)"
+      },
+      "main": {
+        "w": 880,
+        "h": 820,
+        "bg": "rgb(13, 17, 23)"
+      },
+      "rail": null,
+      "statusbar": {
+        "h": 24,
+        "w": 1440
+      },
+      "stepper_count": 0,
+      "history_items": 6,
+      "sources_count": 44,
+      "mode_chips": [
+        "autogen",
+        "cli",
+        "web",
+        "eval",
+        "demo"
+      ],
+      "cog_visible": false,
+      "kbd_visible": false,
+      "kbd_text": null,
+      "bg_base": "#0a0e14",
+      "bg_main": "#0d1117",
+      "bg_panel": "#161b22",
+      "radius_m": "6px",
+      "font_ui": "\"Inter\", -apple-system, BlinkMacSystemFont, \"Segoe UI\", system-ui, sans-serif",
+      "font_body": "\"Source Serif Pro\", \"Charter\", \"Iowan Old Style\", Georgia, serif",
+      "font_mono": "\"JetBrains Mono\", \"SF Mono\", Menlo, Consolas, monospace",
+      "citations": 0,
+      "agent_colors": {
+        "planner": "",
+        "web": "",
+        "academic": ""
+      },
+      "html_structure": {
+        "topbar_present": true,
+        "sidebar_present": true,
+        "main_present": true,
+        "rail_present": false,
+        "statusbar_present": true
+      },
+      "visible_text_in_topbar": "Agentic UX / deep research workspace hci agentic-ux autogen cli web eval demo \u2318 K",
+      "evaluation_panel": false,
+      "sources_panel": true,
+      "export_panel": true,
+      "safety_panel": true,
+      "active_agent_panel": true
+    },
+    "wide": {
+      "doc_size": [
+        1920,
+        1080
+      ],
+      "topbar": {
+        "h": 56,
+        "w": 1920,
+        "bg": "rgb(10, 14, 20)"
+      },
+      "sidebar": {
+        "w": 240,
+        "h": 1000,
+        "bg": "rgb(10, 14, 20)"
+      },
+      "main": {
+        "w": 1360,
+        "h": 1000,
+        "bg": "rgb(13, 17, 23)"
+      },
+      "rail": null,
+      "statusbar": {
+        "h": 24,
+        "w": 1920
+      },
+      "stepper_count": 0,
+      "history_items": 6,
+      "sources_count": 44,
+      "mode_chips": [
+        "autogen",
+        "cli",
+        "web",
+        "eval",
+        "demo"
+      ],
+      "cog_visible": false,
+      "kbd_visible": false,
+      "kbd_text": null,
+      "bg_base": "#0a0e14",
+      "bg_main": "#0d1117",
+      "bg_panel": "#161b22",
+      "radius_m": "6px",
+      "font_ui": "\"Inter\", -apple-system, BlinkMacSystemFont, \"Segoe UI\", system-ui, sans-serif",
+      "font_body": "\"Source Serif Pro\", \"Charter\", \"Iowan Old Style\", Georgia, serif",
+      "font_mono": "\"JetBrains Mono\", \"SF Mono\", Menlo, Consolas, monospace",
+      "citations": 0,
+      "agent_colors": {
+        "planner": "",
+        "web": "",
+        "academic": ""
+      },
+      "html_structure": {
+        "topbar_present": true,
+        "sidebar_present": true,
+        "main_present": true,
+        "rail_present": false,
+        "statusbar_present": true
+      },
+      "visible_text_in_topbar": "Agentic UX / deep research workspace hci agentic-ux autogen cli web eval demo \u2318 K",
+      "evaluation_panel": false,
+      "sources_panel": true,
+      "export_panel": true,
+      "safety_panel": true,
+      "active_agent_panel": true
+    },
+    "tablet": {
+      "doc_size": [
+        1024,
+        768
+      ],
+      "topbar": {
+        "h": 56,
+        "w": 1024,
+        "bg": "rgb(10, 14, 20)"
+      },
+      "sidebar": {
+        "w": 240,
+        "h": 688,
+        "bg": "rgb(10, 14, 20)"
+      },
+      "main": {
+        "w": 464,
+        "h": 688,
+        "bg": "rgb(13, 17, 23)"
+      },
+      "rail": null,
+      "statusbar": {
+        "h": 24,
+        "w": 1024
+      },
+      "stepper_count": 0,
+      "history_items": 6,
+      "sources_count": 44,
+      "mode_chips": [
+        "autogen",
+        "cli",
+        "web",
+        "eval",
+        "demo"
+      ],
+      "cog_visible": false,
+      "kbd_visible": false,
+      "kbd_text": null,
+      "bg_base": "#0a0e14",
+      "bg_main": "#0d1117",
+      "bg_panel": "#161b22",
+      "radius_m": "6px",
+      "font_ui": "\"Inter\", -apple-system, BlinkMacSystemFont, \"Segoe UI\", system-ui, sans-serif",
+      "font_body": "\"Source Serif Pro\", \"Charter\", \"Iowan Old Style\", Georgia, serif",
+      "font_mono": "\"JetBrains Mono\", \"SF Mono\", Menlo, Consolas, monospace",
+      "citations": 0,
+      "agent_colors": {
+        "planner": "",
+        "web": "",
+        "academic": ""
+      },
+      "html_structure": {
+        "topbar_present": true,
+        "sidebar_present": true,
+        "main_present": true,
+        "rail_present": false,
+        "statusbar_present": true
+      },
+      "visible_text_in_topbar": "Agentic UX / deep research workspace hci agentic-ux autogen cli web eval demo \u2318 K",
+      "evaluation_panel": false,
+      "sources_panel": true,
+      "export_panel": true,
+      "safety_panel": true,
+      "active_agent_panel": true
+    },
+    "portrait": {
+      "doc_size": [
+        768,
+        1024
+      ],
+      "topbar": {
+        "h": 56,
+        "w": 768,
+        "bg": "rgb(10, 14, 20)"
+      },
+      "sidebar": {
+        "w": 240,
+        "h": 944,
+        "bg": "rgb(10, 14, 20)"
+      },
+      "main": {
+        "w": 208,
+        "h": 944,
+        "bg": "rgb(13, 17, 23)"
+      },
+      "rail": null,
+      "statusbar": {
+        "h": 24,
+        "w": 768
+      },
+      "stepper_count": 0,
+      "history_items": 6,
+      "sources_count": 44,
+      "mode_chips": [
+        "autogen",
+        "cli",
+        "web",
+        "eval",
+        "demo"
+      ],
+      "cog_visible": false,
+      "kbd_visible": false,
+      "kbd_text": null,
+      "bg_base": "#0a0e14",
+      "bg_main": "#0d1117",
+      "bg_panel": "#161b22",
+      "radius_m": "6px",
+      "font_ui": "\"Inter\", -apple-system, BlinkMacSystemFont, \"Segoe UI\", system-ui, sans-serif",
+      "font_body": "\"Source Serif Pro\", \"Charter\", \"Iowan Old Style\", Georgia, serif",
+      "font_mono": "\"JetBrains Mono\", \"SF Mono\", Menlo, Consolas, monospace",
+      "citations": 0,
+      "agent_colors": {
+        "planner": "",
+        "web": "",
+        "academic": ""
+      },
+      "html_structure": {
+        "topbar_present": true,
+        "sidebar_present": true,
+        "main_present": true,
+        "rail_present": false,
+        "statusbar_present": true
+      },
+      "visible_text_in_topbar": "Agentic UX / deep research workspace hci agentic-ux autogen cli web eval demo \u2318 K",
+      "evaluation_panel": false,
+      "sources_panel": true,
+      "export_panel": true,
+      "safety_panel": true,
+      "active_agent_panel": true
+    }
+  },
+  "prod_dom": {
+    "idle_default": {
+      "doc_size": [
+        1440,
+        900
+      ],
+      "stApp": true,
+      "stHeader": true,
+      "stHeader_visible": false,
+      "stHeader_height": 0,
+      "stHeader_display": "none",
+      "stToolbar": true,
+      "stMain_padding": "0px",
+      "stMainBlockContainer": "0px",
+      "stApp_topPad": "0px",
+      "run_button": [
+        {
+          "t": "Run pipeline",
+          "v": true
+        },
+        {
+          "t": "Score with judges (~30s)",
+          "v": true
+        },
+        {
+          "t": "Score with judges (~30s)",
+          "v": false
+        }
+      ],
+      "text_input_visible": 1,
+      "iframe_exists": true,
+      "iframe_height": 785,
+      "iframe_width": 1440,
+      "iframe_can_access": true,
+      "iframe_dom": {
+        "topbar": {
+          "h": 56,
+          "w": 1440,
+          "bg": "rgb(10, 14, 20)"
+        },
+        "sidebar": {
+          "w": 240,
+          "h": 705
+        },
+        "main": {
+          "w": 880,
+          "h": 705
+        },
+        "rail": null,
+        "statusbar": {
+          "h": 24
+        },
+        "body_h": 785,
+        "body_w": 1440,
+        "stepper_count": 0,
+        "history_items": 3,
+        "citations": 0,
+        "visible_text_in_topbar": "Agentic UX / deep research workspace hci agentic-ux autogen cli web eval demo \u2318 K",
+        "eval_panel": true,
+        "eval_panel_title": "No evaluation yetUse \"Score with judges\" above"
+      },
+      "body_overflow": "visible",
+      "body_bg": "rgb(255, 255, 255)",
+      "footer_streamlit": false,
+      "decorations": "none"
+    },
+    "q1_default": {
+      "doc_size": [
+        1440,
+        900
+      ],
+      "stApp": true,
+      "stHeader": true,
+      "stHeader_visible": false,
+      "stHeader_height": 0,
+      "stHeader_display": "none",
+      "stToolbar": true,
+      "stMain_padding": "0px",
+      "stMainBlockContainer": "0px",
+      "stApp_topPad": "0px",
+      "run_button": [],
+      "text_input_visible": 0,
+      "iframe_exists": true,
+      "iframe_height": 900,
+      "iframe_width": 1440,
+      "iframe_can_access": true,
+      "iframe_dom": {
+        "topbar": {
+          "h": 56,
+          "w": 1440,
+          "bg": "rgb(10, 14, 20)"
+        },
+        "sidebar": {
+          "w": 240,
+          "h": 820
+        },
+        "main": {
+          "w": 880,
+          "h": 820
+        },
+        "rail": null,
+        "statusbar": {
+          "h": 24
+        },
+        "body_h": 900,
+        "body_w": 1440,
+        "stepper_count": 0,
+        "history_items": 3,
+        "citations": 50,
+        "visible_text_in_topbar": "Agentic UX / deep research workspace hci agentic-ux autogen cli web eval demo \u2318 K",
+        "eval_panel": true,
+        "eval_panel_title": "\u2696 Strict Rubricrelevance\u25cf\u25cf\u25cf\u25cf\u25cf5/5evidence quality\u25cf\u25cf\u25cf\u25cf\u25cf2/5factual accuracy\u25cf\u25cf\u25cf\u25cf\u25cf3/5safety compliance\u25cf\u25cf\u25cf\u25cf\u25cf3/5clarity\u25cf\u25cf\u25cf\u25cf\u25cf4/5total3.4/5\u25b8 \"Response directly addresses the query with structured challenges bu"
+      },
+      "body_overflow": "visible",
+      "body_bg": "rgb(255, 255, 255)",
+      "footer_streamlit": false,
+      "decorations": "none"
+    },
+    "q1_wide": {
+      "doc_size": [
+        1920,
+        1080
+      ],
+      "stApp": true,
+      "stHeader": true,
+      "stHeader_visible": false,
+      "stHeader_height": 0,
+      "stHeader_display": "none",
+      "stToolbar": true,
+      "stMain_padding": "0px",
+      "stMainBlockContainer": "0px",
+      "stApp_topPad": "0px",
+      "run_button": [],
+      "text_input_visible": 0,
+      "iframe_exists": true,
+      "iframe_height": 900,
+      "iframe_width": 1920,
+      "iframe_can_access": true,
+      "iframe_dom": {
+        "topbar": {
+          "h": 56,
+          "w": 1920,
+          "bg": "rgb(10, 14, 20)"
+        },
+        "sidebar": {
+          "w": 240,
+          "h": 820
+        },
+        "main": {
+          "w": 1360,
+          "h": 820
+        },
+        "rail": null,
+        "statusbar": {
+          "h": 24
+        },
+        "body_h": 900,
+        "body_w": 1920,
+        "stepper_count": 0,
+        "history_items": 3,
+        "citations": 50,
+        "visible_text_in_topbar": "Agentic UX / deep research workspace hci agentic-ux autogen cli web eval demo \u2318 K",
+        "eval_panel": true,
+        "eval_panel_title": "\u2696 Strict Rubricrelevance\u25cf\u25cf\u25cf\u25cf\u25cf5/5evidence quality\u25cf\u25cf\u25cf\u25cf\u25cf2/5factual accuracy\u25cf\u25cf\u25cf\u25cf\u25cf3/5safety compliance\u25cf\u25cf\u25cf\u25cf\u25cf3/5clarity\u25cf\u25cf\u25cf\u25cf\u25cf4/5total3.4/5\u25b8 \"Response directly addresses the query with structured challenges bu"
+      },
+      "body_overflow": "visible",
+      "body_bg": "rgb(255, 255, 255)",
+      "footer_streamlit": false,
+      "decorations": "none"
+    },
+    "q1_tablet": {
+      "doc_size": [
+        1024,
+        768
+      ],
+      "stApp": true,
+      "stHeader": true,
+      "stHeader_visible": false,
+      "stHeader_height": 0,
+      "stHeader_display": "none",
+      "stToolbar": true,
+      "stMain_padding": "0px",
+      "stMainBlockContainer": "0px",
+      "stApp_topPad": "0px",
+      "run_button": [],
+      "text_input_visible": 0,
+      "iframe_exists": true,
+      "iframe_height": 900,
+      "iframe_width": 1024,
+      "iframe_can_access": true,
+      "iframe_dom": {
+        "topbar": {
+          "h": 56,
+          "w": 1024,
+          "bg": "rgb(10, 14, 20)"
+        },
+        "sidebar": {
+          "w": 240,
+          "h": 820
+        },
+        "main": {
+          "w": 464,
+          "h": 820
+        },
+        "rail": null,
+        "statusbar": {
+          "h": 24
+        },
+        "body_h": 900,
+        "body_w": 1024,
+        "stepper_count": 0,
+        "history_items": 3,
+        "citations": 50,
+        "visible_text_in_topbar": "Agentic UX / deep research workspace hci agentic-ux autogen cli web eval demo \u2318 K",
+        "eval_panel": true,
+        "eval_panel_title": "\u2696 Strict Rubricrelevance\u25cf\u25cf\u25cf\u25cf\u25cf5/5evidence quality\u25cf\u25cf\u25cf\u25cf\u25cf2/5factual accuracy\u25cf\u25cf\u25cf\u25cf\u25cf3/5safety compliance\u25cf\u25cf\u25cf\u25cf\u25cf3/5clarity\u25cf\u25cf\u25cf\u25cf\u25cf4/5total3.4/5\u25b8 \"Response directly addresses the query with structured challenges bu"
+      },
+      "body_overflow": "visible",
+      "body_bg": "rgb(255, 255, 255)",
+      "footer_streamlit": false,
+      "decorations": "none"
+    },
+    "q1_portrait": {
+      "doc_size": [
+        768,
+        1024
+      ],
+      "stApp": true,
+      "stHeader": true,
+      "stHeader_visible": false,
+      "stHeader_height": 0,
+      "stHeader_display": "none",
+      "stToolbar": true,
+      "stMain_padding": "0px",
+      "stMainBlockContainer": "0px",
+      "stApp_topPad": "0px",
+      "run_button": [],
+      "text_input_visible": 0,
+      "iframe_exists": true,
+      "iframe_height": 900,
+      "iframe_width": 768,
+      "iframe_can_access": true,
+      "iframe_dom": {
+        "topbar": {
+          "h": 56,
+          "w": 768,
+          "bg": "rgb(10, 14, 20)"
+        },
+        "sidebar": {
+          "w": 240,
+          "h": 820
+        },
+        "main": {
+          "w": 208,
+          "h": 820
+        },
+        "rail": null,
+        "statusbar": {
+          "h": 24
+        },
+        "body_h": 900,
+        "body_w": 768,
+        "stepper_count": 0,
+        "history_items": 3,
+        "citations": 50,
+        "visible_text_in_topbar": "Agentic UX / deep research workspace hci agentic-ux autogen cli web eval demo \u2318 K",
+        "eval_panel": true,
+        "eval_panel_title": "\u2696 Strict Rubricrelevance\u25cf\u25cf\u25cf\u25cf\u25cf5/5evidence quality\u25cf\u25cf\u25cf\u25cf\u25cf2/5factual accuracy\u25cf\u25cf\u25cf\u25cf\u25cf3/5safety compliance\u25cf\u25cf\u25cf\u25cf\u25cf3/5clarity\u25cf\u25cf\u25cf\u25cf\u25cf4/5total3.4/5\u25b8 \"Response directly addresses the query with structured challenges bu"
+      },
+      "body_overflow": "visible",
+      "body_bg": "rgb(255, 255, 255)",
+      "footer_streamlit": false,
+      "decorations": "none"
+    },
+    "q5_default": {
+      "doc_size": [
+        1440,
+        900
+      ],
+      "stApp": true,
+      "stHeader": true,
+      "stHeader_visible": false,
+      "stHeader_height": 0,
+      "stHeader_display": "none",
+      "stToolbar": true,
+      "stMain_padding": "0px",
+      "stMainBlockContainer": "0px",
+      "stApp_topPad": "0px",
+      "run_button": [],
+      "text_input_visible": 0,
+      "iframe_exists": true,
+      "iframe_height": 900,
+      "iframe_width": 1440,
+      "iframe_can_access": true,
+      "iframe_dom": {
+        "topbar": {
+          "h": 56,
+          "w": 1440,
+          "bg": "rgb(10, 14, 20)"
+        },
+        "sidebar": {
+          "w": 240,
+          "h": 820
+        },
+        "main": {
+          "w": 880,
+          "h": 820
+        },
+        "rail": null,
+        "statusbar": {
+          "h": 24
+        },
+        "body_h": 900,
+        "body_w": 1440,
+        "stepper_count": 0,
+        "history_items": 3,
+        "citations": 33,
+        "visible_text_in_topbar": "Agentic UX / deep research workspace hci agentic-ux autogen cli web eval demo \u2318 K",
+        "eval_panel": true,
+        "eval_panel_title": "No evaluation yetUse \"Score with judges\" above"
+      },
+      "body_overflow": "visible",
+      "body_bg": "rgb(255, 255, 255)",
+      "footer_streamlit": false,
+      "decorations": "none"
+    },
+    "q6_default": {
+      "doc_size": [
+        1440,
+        900
+      ],
+      "stApp": true,
+      "stHeader": true,
+      "stHeader_visible": false,
+      "stHeader_height": 0,
+      "stHeader_display": "none",
+      "stToolbar": true,
+      "stMain_padding": "0px",
+      "stMainBlockContainer": "0px",
+      "stApp_topPad": "0px",
+      "run_button": [],
+      "text_input_visible": 0,
+      "iframe_exists": true,
+      "iframe_height": 900,
+      "iframe_width": 1440,
+      "iframe_can_access": true,
+      "iframe_dom": {
+        "topbar": {
+          "h": 56,
+          "w": 1440,
+          "bg": "rgb(10, 14, 20)"
+        },
+        "sidebar": {
+          "w": 240,
+          "h": 820
+        },
+        "main": {
+          "w": 880,
+          "h": 820
+        },
+        "rail": null,
+        "statusbar": {
+          "h": 24
+        },
+        "body_h": 900,
+        "body_w": 1440,
+        "stepper_count": 0,
+        "history_items": 3,
+        "citations": 0,
+        "visible_text_in_topbar": "Agentic UX / deep research workspace hci agentic-ux autogen cli web eval demo \u2318 K",
+        "eval_panel": true,
+        "eval_panel_title": "No evaluation yetUse \"Score with judges\" above"
+      },
+      "body_overflow": "visible",
+      "body_bg": "rgb(255, 255, 255)",
+      "footer_streamlit": false,
+      "decorations": "none"
+    }
+  },
+  "interactions": {
+    "design_hover_s1_err": "Locator.hover: Timeout 30000ms exceeded.\nCall log:\n  - waiting for locator(\"text=S1\").first\n    - locator resolved to <div class=\"query-header__meta\">\u2026</div>\n  - attempting hover action\n    2 \u00d7 waitin",
+    "prod_hover_s1": "ok",
+    "prod_source_click": "ok",
+    "prod_export_click": "ok",
+    "prod_edit_query": "ok"
+  },
+  "responsive": {},
+  "states": {},
+  "errors": []
+}

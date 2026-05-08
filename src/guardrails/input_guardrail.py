@@ -1,142 +1,105 @@
 """
-Input Guardrail
-Checks user inputs for safety violations.
-"""
+Input guardrail — pre-pipeline safety check on user query.
 
-from typing import Dict, Any, List
+Created: 2026-05-07
+Last reused or audited: 2026-05-07
+Authority basis: Plan §Guardrails categories 1-3.
+
+Two layers:
+  Layer 1: regex / keyword / length (fast, zero-cost)
+  Layer 2: Qwen3-8B classifier for off-topic / nuanced harm (cached)
+"""
+import re
+from typing import Optional
+from src.guardrails.safety_manager import SafetyEvent
+
+# Patterns
+PROMPT_INJECTION_PATTERNS = [
+    r"ignore (all |the |your |my )?(previous|prior|above) (instructions|directives|prompts)",
+    r"disregard (all |the )?(previous|prior|above)",
+    r"forget (your |the |all )?(previous|prior|earlier|above)",
+    r"system:\s*",
+    r"<\|im_start\|>",
+    r"```system",
+    r"reveal (your |the )?(system )?prompt",
+    r"what (are |is )?your (system )?(prompt|instructions)",
+]
+
+HARMFUL_KEYWORDS = [
+    # Unauthorized security testing
+    "hack into", "bypass authentication", "exploit vulnerability", "ddos attack", "ransomware",
+    # Violence
+    "how to kill", "make a bomb", "weapon to harm",
+    # Self-harm
+    "how to commit suicide",
+]
+
+# LLM classifier prompt for off-topic check
+TOPIC_CHECK_PROMPT = """You are a topic classifier. The system researches Human-Computer Interaction (HCI), specifically Agentic UX and AI-driven prototyping. Related topics include: user experience, human-AI interaction, agent design, design patterns, usability, accessibility, design tools.
+
+Classify this query:
+QUERY: "{query}"
+
+Reply with exactly one line: "ON_TOPIC" or "OFF_TOPIC: <one phrase reason>".
+Do not include <think> blocks. Do not explain. One line only."""
 
 
 class InputGuardrail:
-    """
-    Guardrail for checking input safety.
-
-    TODO: YOUR CODE HERE
-    - Integrate with Guardrails AI or NeMo Guardrails
-    - Define validation rules
-    - Implement custom validators
-    - Handle different types of violations
-    """
-
-    def __init__(self, config: Dict[str, Any]):
-        """
-        Initialize input guardrail.
-
-        Args:
-            config: Configuration dictionary
-        """
+    def __init__(self, config: dict, model_client=None):
         self.config = config
+        self.model_client = model_client  # for layer 2 classifier
+        safety_cfg = config.get("safety", {})
+        self.min_length = safety_cfg.get("min_query_length", 5)
+        self.max_length = safety_cfg.get("max_query_length", 2000)
 
-        # TODO: Initialize guardrail framework
-        # Suggested implementation:
-        # - Read safety settings from config.yaml
-        # - Store min/max query length thresholds
-        # - Prepare policy categories such as harmful content,
-        #   prompt injection, and off-topic queries
-        # - Optionally initialize Guardrails AI / NeMo Guardrails here
+    def validate(self, query: str) -> Optional[SafetyEvent]:
+        """Returns SafetyEvent if blocked/sanitized, None if pass."""
+        q = query.strip()
+        ql = q.lower()
 
-    def validate(self, query: str) -> Dict[str, Any]:
-        """
-        Validate input query.
+        # Length
+        if len(q) < self.min_length:
+            return SafetyEvent(category="malformed_input", severity="warning", action="refuse",
+                               message=f"Query too short (<{self.min_length} chars)",
+                               evidence={"length": len(q)})
+        if len(q) > self.max_length:
+            return SafetyEvent(category="malformed_input", severity="warning", action="refuse",
+                               message=f"Query too long (>{self.max_length} chars)",
+                               evidence={"length": len(q)})
 
-        Args:
-            query: User input to validate
+        # Layer 1a: Prompt injection
+        for pat in PROMPT_INJECTION_PATTERNS:
+            m = re.search(pat, ql, re.IGNORECASE)
+            if m:
+                return SafetyEvent(category="prompt_injection", severity="block", action="refuse",
+                                   message="Detected prompt injection pattern",
+                                   evidence={"pattern": pat, "match": m.group(0)[:100]})
 
-        Returns:
-            Validation result
+        # Layer 1b: Harmful keywords
+        for kw in HARMFUL_KEYWORDS:
+            if kw in ql:
+                return SafetyEvent(category="harmful_content", severity="block", action="refuse",
+                                   message="Detected harmful intent keyword",
+                                   evidence={"keyword": kw})
 
-        TODO: YOUR CODE HERE
-        - Implement validation logic
-        - Check for toxic language
-        - Check for prompt injection attempts
-        - Check query length and format
-        - Check for off-topic queries
-        """
-        violations = []
+        # Layer 2: Off-topic check via LLM classifier
+        if self.model_client is not None:
+            try:
+                import asyncio
+                topic = asyncio.run(self._classify_topic_async(q))
+                if topic and topic.startswith("OFF_TOPIC"):
+                    return SafetyEvent(category="off_topic_queries", severity="warning", action="refuse",
+                                       message="Query off-topic for HCI / Agentic UX",
+                                       evidence={"classifier_response": topic[:200]})
+            except Exception:
+                # Don't fail-closed — off-topic is lowest-stakes
+                pass
 
-        # TODO: Implement actual validation
-        # Suggested implementation:
-        # 1. Normalize the input (strip spaces, lowercase copy for keyword checks)
-        # 2. Add length checks using thresholds from config
-        # 3. Call helper methods like _check_toxic_language(),
-        #    _check_prompt_injection(), and _check_relevance()
-        # 4. Decide whether violations should block, sanitize, or warn
-        # 5. Return both the raw violations and a sanitized_input if applicable
+        return None  # passed all checks
 
-        # Placeholder checks
-        if len(query) < 5:
-            violations.append({
-                "validator": "length",
-                "reason": "Query too short",
-                "severity": "low"
-            })
-
-        if len(query) > 2000:
-            violations.append({
-                "validator": "length",
-                "reason": "Query too long",
-                "severity": "medium"
-            })
-
-        return {
-            "valid": len(violations) == 0,
-            "violations": violations,
-            "sanitized_input": query  # Could be modified version
-        }
-
-    def _check_toxic_language(self, text: str) -> List[Dict[str, Any]]:
-        """
-        Check for toxic/harmful language.
-
-        TODO: YOUR CODE HERE
-        Suggested implementation:
-        - Use a moderation API, Guardrails validator, or keyword/rule-based classifier
-        - Return a list of violations with validator name, reason, and severity
-        - Mark clearly unsafe requests as high severity
-        """
-        violations = []
-        # Implement toxicity check
-        return violations
-
-    def _check_prompt_injection(self, text: str) -> List[Dict[str, Any]]:
-        """
-        Check for prompt injection attempts.
-
-        TODO: YOUR CODE HERE
-        Suggested implementation:
-        - Detect phrases like \"ignore previous instructions\",
-        #   attempts to reveal system prompts, or role-confusion attacks
-        - Consider whether the result should block the request or sanitize it
-        """
-        violations = []
-        # Check for common prompt injection patterns
-        injection_patterns = [
-            "ignore previous instructions",
-            "disregard",
-            "forget everything",
-            "system:",
-            "sudo",
-        ]
-
-        for pattern in injection_patterns:
-            if pattern.lower() in text.lower():
-                violations.append({
-                    "validator": "prompt_injection",
-                    "reason": f"Potential prompt injection: {pattern}",
-                    "severity": "high"
-                })
-
-        return violations
-
-    def _check_relevance(self, query: str) -> List[Dict[str, Any]]:
-        """
-        Check if query is relevant to the system's purpose.
-
-        TODO: YOUR CODE HERE
-        Suggested implementation:
-        - Compare the query to the configured topic in config.yaml
-        - Use keyword heuristics or an LLM classifier
-        - Return low/medium severity violations for off-topic requests
-        """
-        violations = []
-        # Check if query is about HCI research (or configured topic)
-        return violations
+    async def _classify_topic_async(self, query: str) -> Optional[str]:
+        from autogen_core.models import UserMessage
+        from src.agents.autogen_agents import strip_thinking
+        msg = UserMessage(content=TOPIC_CHECK_PROMPT.format(query=query[:500]), source="user")
+        result = await self.model_client.create([msg])
+        return strip_thinking(result.content).strip().split("\n")[0]
